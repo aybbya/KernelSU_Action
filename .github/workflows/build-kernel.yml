@@ -263,15 +263,9 @@ jobs:
 
         echo "🧹 步骤 0: 清理内核源码目录"
         echo "✅ Current directory: $(pwd)"
-
         # 确保清理内核源码目录
         echo "🧹 步骤 0: 清理内核源码目录"
-        make mrproper
-        if [ $? -ne 0 ]; then
-            echo "❌ Error: make mrproper failed. Please check permissions and directory structure."
-            exit 1
-        fi
-
+        make clean
         echo "🔧 步骤 1: 使用基础配置 (${{ env.KERNEL_BASE_CONFIG }}) 生成初始 .config"
         make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_BASE_CONFIG }}
 
