@@ -256,40 +256,32 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        if [ ! -z ${{ env.KSU_EXPECTED_SIZE }} ] && [ ! -z ${{ env.KSU_EXPECTED_HASH }} ]; then
+        if [ ! -z "${{ env.KSU_EXPECTED_SIZE }}" ] && [ ! -z "${{ env.KSU_EXPECTED_HASH }}" ]; then
           export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
           export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
         fi
-
-        echo "🧹 步骤 0: 清理内核源码目录"
+    
+        echo "🧹 步骤 0: 彻底清理内核源码目录"
         echo "✅ Current directory: $(pwd)"
-        # 确保清理内核源码目录
-        echo "🧹 步骤 0: 清理内核源码目录"
-        make clean
+        make mrproper  # ← 关键：用 mrproper，不是 clean
+    
         echo "🔧 步骤 1: 使用基础配置 (${{ env.KERNEL_BASE_CONFIG }}) 生成初始 .config"
         make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_BASE_CONFIG }}
-
+    
         echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
-        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }}
-
-        echo "🔧 步骤 3: 第一次自动化配置 (处理安全选项)"
-        # 第一次 oldconfig 处理一批问题
-        yes "" | make O=out ARCH=${{ env.ARCH }} oldconfig
-
-        echo "🔧 步骤 4: 第二次自动化配置 (处理内核特性选项)"
-        # 第二次 oldconfig 处理另一批问题，确保最终编译时不再有交互
-        yes "" | make O=out ARCH=${{ env.ARCH }} oldconfig
-
-        echo "🚀 步骤 5: 开始编译内核"
-        # 所有配置问题已解决，不再需要 </dev/null
-        if [ ${{ env.ENABLE_CCACHE }} = true ]; then
+        mkdir -p out
+        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }} > /dev/null
+        rm -f .config  # ← 删除可能在根目录生成的 .config
+    
+        echo "🔧 步骤 3: 自动化最终配置（无交互）"
+        make O=out ARCH=${{ env.ARCH }} olddefconfig  # ← 推荐使用 olddefconfig
+    
+        echo "🚀 步骤 4: 开始编译内核"
+        if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         else
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         fi
-
-
-
 
 
 
