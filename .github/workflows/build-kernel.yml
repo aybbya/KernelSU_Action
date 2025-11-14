@@ -284,33 +284,30 @@ jobs:
         rm -rf include/config/
         rm -rf arch/${{ env.ARCH }}/boot/
         
-        echo "加载基础 defconfig 到 out/"
-        make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_BASE_CONFIG }}
-        
-        echo "合并配置片段"
+        echo "一次性生成并合并所有配置到 out/"
         mkdir -p out
-        # merge_config.sh 在根目录执行，-O out 指定输出
+        # 关键修改 1: 使用 merge_config.sh 一次性完成所有配置合并
+        # 这会以 KERNEL_BASE_CONFIG (如 defconfig) 为基础，合并所有片段，并直接输出到 out/.config
         scripts/kconfig/merge_config.sh -m -O out \
             arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }} \
             arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
             arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}
         
-        # 关键修改：保持在根目录，不要 cd out
         echo "🔍 验证配置"
         grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
     
         echo "🔧 步骤 3: olddefconfig（从根目录执行）"
-        # 使用 O=out 而不是 O=../out
-        make O=out ARCH=${{ env.ARCH }} olddefconfig
+        # 关键修改 2: 使用 yes "" 强制 olddefconfig 非交互式运行
+        # 这会自动回答所有问题（通常是选择默认值），确保命令不会卡住
+        yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
     
         echo "🚀 编译"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-          # 使用 O=out 而不是 O=../out
           make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         else
-          # 使用 O=out 而不是 O=../out
           make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         fi
+
 
 
 
