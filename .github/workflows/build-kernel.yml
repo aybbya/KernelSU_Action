@@ -286,8 +286,6 @@ jobs:
         
         echo "一次性生成并合并所有配置到 out/"
         mkdir -p out
-        # 关键修改 1: 使用 merge_config.sh 一次性完成所有配置合并
-        # 这会以 KERNEL_BASE_CONFIG (如 defconfig) 为基础，合并所有片段，并直接输出到 out/.config
         scripts/kconfig/merge_config.sh -m -O out \
             arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }} \
             arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
@@ -297,15 +295,16 @@ jobs:
         grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
     
         echo "🔧 步骤 3: olddefconfig（从根目录执行）"
-        # 关键修改 2: 使用 yes "" 强制 olddefconfig 非交互式运行
-        # 这会自动回答所有问题（通常是选择默认值），确保命令不会卡住
         yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
     
         echo "🚀 编译"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-          make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+          # 关键修改：在最终的 make 命令前也加上 yes "" |
+          # 这会处理在 syncconfig 阶段可能出现的任何交互式问题
+          yes "" | make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         else
-          make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+          # 关键修改：在最终的 make 命令前也加上 yes "" |
+          yes "" | make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         fi
 
 
