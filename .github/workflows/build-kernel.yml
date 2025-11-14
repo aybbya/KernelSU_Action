@@ -258,13 +258,13 @@ jobs:
         fi
 
         echo "🔧 步骤 1: 使用基础配置 (gki_defconfig) 生成初始 .config"
-        make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} {{env.KERNEL_BASE_CONFIG}}
+        make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_BASE_CONFIG }}
 
         echo "🔧 步骤 2: 合并 umi 设备特定配置片段"
         # 使用 merge_config.sh 将片段合并到 .config 文件中
         # -m 参数表示直接修改 .config 文件
-        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/{{env.KERNEL_CONFIG}}
-
+        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }}
+        cat out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }}
         echo "🔧 步骤 3: 最终化配置文件 (处理新选项)"
         # 运行 oldconfig 来处理合并后可能出现的新的配置项
         make O=out ARCH=${{ env.ARCH }} oldconfig
