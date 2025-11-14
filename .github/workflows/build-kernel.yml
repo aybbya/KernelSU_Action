@@ -215,8 +215,6 @@ jobs:
     - name: Setup Configuration for Kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        echo "CONFIG_QCOM_SMEM=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
-        echo "CONFIG_QCOM_SMD_RPM=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
             bash $GITHUB_WORKSPACE/patches/patches.sh
             if grep -q "CONFIG_KSU" arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}; then
@@ -274,6 +272,11 @@ jobs:
         mkdir -p out
         scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }} > /dev/null
         rm -f .config  # ← 删除可能在根目录生成的 .config
+        echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
+        mkdir -p out
+        scripts/kconfig/merge_config.sh -m out/.config arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} > /dev/null
+        rm -f .config  # 防止根目录残留
+
     
         echo "🔧 步骤 3: 自动化最终配置（无交互）"
         make O=out ARCH=${{ env.ARCH }} olddefconfig  # ← 推荐使用 olddefconfig
