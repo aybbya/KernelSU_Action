@@ -258,27 +258,26 @@ jobs:
         fi
 
         echo "🧹 步骤 0: 清理内核源码目录"
-        # 使用 mrproper 彻底清理源码，解决 "is not clean" 错误
         make mrproper
 
         echo "🔧 步骤 1: 使用基础配置 (${{ env.KERNEL_BASE_CONFIG }}) 生成初始 .config"
         make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_BASE_CONFIG }}
 
         echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
-        # 使用 merge_config.sh 将片段合并到 .config 文件中
-        # -m 参数表示直接修改 .config 文件
         scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }}
 
         echo "🔧 步骤 3: 自动化最终配置 (处理新选项，无需交互)"
-        # 使用 olddefconfig 自动为新选项选择默认值，避免脚本卡住
         make O=out ARCH=${{ env.ARCH }} olddefconfig
 
         echo "🚀 步骤 4: 开始编译内核"
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            # 在命令末尾添加 </dev/null 来防止交互式输入等待
+            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} </dev/null
         else
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            # 在命令末尾添加 </dev/null 来防止交互式输入等待
+            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} </dev/null
         fi
+
 
 
 
