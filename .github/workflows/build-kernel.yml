@@ -45,7 +45,7 @@ jobs:
             ENABLE_KERNELSU
             KERNELSU_TAG
             ADD_KPROBES_CONFIG
-            DISABLE-LTO
+            DISABLE_LTO
             ADD_OVERLAYFS_CONFIG
             DISABLE_CC_WERROR
             APPLY_KSU_PATCH
@@ -237,7 +237,7 @@ jobs:
         if [ ${{ env.ADD_OVERLAYFS_CONFIG }} = true ]; then
             echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         fi
-        if [ ${{ env.DISABLE-LTO }} = true ]; then
+        if [ ${{ env.DISABLE_LTO }} = true ]; then
             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
             sed -i 's/CONFIG_THINLTO=y/CONFIG_THINLTO=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
