@@ -266,6 +266,10 @@ jobs:
             -o include/uapi/asm-generic/Kbuild.asm
         fi
         ls -l include/uapi/asm-generic/Kbuild.asm
+
+
+
+
         
     - name: Build kernel
       run: |
@@ -274,22 +278,29 @@ jobs:
         export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-
-        echo "🧹 清理构建产物（保留源码）"
+        
+        echo "清理构建产物（保留源码）"
+        # 进入根目录执行make mrproper
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         make mrproper
-        rm -f .config .config.old
-        # 注意：不再删除 include/ 目录！
-
-        echo "🔧 步骤 1: 加载基础 defconfig 到 out/"
-        make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_BASE_CONFIG }}
-
-        echo "🔧 步骤 2: 合并配置片段"
+        # 手动删除可能残留的目录
+        rm -rf include/config/
+        rm -rf arch/arm64/boot/
+        # 返回out目录继续操作
+        cd out
+        echo "加载基础 defconfig 到 out/"
+        make O/out ARCH=arm64 defconfig
+        echo "合并配置片段"
         mkdir -p out
+        # 确保在根目录执行merge_config.sh
+        cd $GITHUBWorkSpace/kernel Workspace/android-kernel
         scripts/kconfig/merge_config.sh -m \
             out/.config \
             arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
-            arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }} \
-            > /dev/null
+            arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}
+        
+        # 返回out目录继续操作
+        cd out
 
         echo "🔍 验证配置"
         grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
