@@ -260,13 +260,16 @@ jobs:
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
     
-        echo "🧹 清理源码"
+        echo "🧹 彻底清理源码目录"
         make mrproper
+        # 额外保险：删除可能残留的文件
+        rm -f .config .config.old
+        rm -rf include/
     
-        echo "🔧 步骤 1: 加载基础 defconfig"
+        echo "🔧 步骤 1: 加载基础 defconfig 到 out/"
         make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_BASE_CONFIG }}
     
-        echo "🔧 步骤 2: 合并 SoC 公共配置 + 小米10 (umi) 设备配置"
+        echo "🔧 步骤 2: 合并配置片段"
         mkdir -p out
         scripts/kconfig/merge_config.sh -m \
             out/.config \
@@ -274,13 +277,16 @@ jobs:
             arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }} \
             > /dev/null
     
-        echo "🔍 验证关键配置是否启用"
-        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM|CONFIG_(MI_|XIAOMI_|UMI_)" out/.config || true
+        # ⚠️ 关键：不要让 merge_config.sh 在根目录生成 .config！
+        # 它默认会写到当前目录，但我们指定了 out/.config，所以安全
     
-        echo "🔧 步骤 3: 自动补全依赖项"
+        echo "🔍 验证配置"
+        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
+    
+        echo "🔧 步骤 3: olddefconfig（在 out/ 中）"
         make O=out ARCH=${{ env.ARCH }} olddefconfig
     
-        echo "🚀 开始编译内核"
+        echo "🚀 编译"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         else
