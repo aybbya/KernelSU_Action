@@ -20,6 +20,8 @@ jobs:
             KERNEL_SOURCE_BRANCH
             KERNEL_CONFIG
             KERNEL_BASE_CONFIG
+            COMMON_CONFIG_FRAGMENT
+            DEVICE_CONFIG_FRAGMENT
             KERNEL_IMAGE_NAME
             ARCH
             ADD_LOCALVERSION_TO_FILENAME
@@ -253,39 +255,36 @@ jobs:
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH
+        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$GITHUB_WORKSPACE/kernel_workspace/gas:$PATH
+        export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        if [ ! -z "${{ env.KSU_EXPECTED_SIZE }}" ] && [ ! -z "${{ env.KSU_EXPECTED_HASH }}" ]; then
-          export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
-          export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
-        fi
     
-        echo "🧹 步骤 0: 彻底清理内核源码目录"
-        echo "✅ Current directory: $(pwd)"
-        make mrproper  # ← 关键：用 mrproper，不是 clean
+        echo "🧹 清理源码"
+        make mrproper
     
-        echo "🔧 步骤 1: 使用基础配置 (${{ env.KERNEL_BASE_CONFIG }}) 生成初始 .config"
-        make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_BASE_CONFIG }}
+        echo "🔧 步骤 1: 加载基础 defconfig"
+        make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_BASE_CONFIG }}
     
-        echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
+        echo "🔧 步骤 2: 合并 SoC 公共配置 + 小米10 (umi) 设备配置"
         mkdir -p out
-        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }} > /dev/null
-        rm -f .config  # ← 删除可能在根目录生成的 .config
-        echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
-        mkdir -p out
-        scripts/kconfig/merge_config.sh -m out/.config arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} > /dev/null
-        rm -f .config  # 防止根目录残留
-
+        scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
+            arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }} \
+            > /dev/null
     
-        echo "🔧 步骤 3: 自动化最终配置（无交互）"
-        make O=out ARCH=${{ env.ARCH }} olddefconfig  # ← 推荐使用 olddefconfig
+        echo "🔍 验证关键配置是否启用"
+        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM|CONFIG_(MI_|XIAOMI_|UMI_)" out/.config || true
     
-        echo "🚀 步骤 4: 开始编译内核"
+        echo "🔧 步骤 3: 自动补全依赖项"
+        make O=out ARCH=${{ env.ARCH }} olddefconfig
+    
+        echo "🚀 开始编译内核"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         else
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         fi
 
 
