@@ -253,7 +253,18 @@ jobs:
       with:
         key: build-kernel-${{ env.DEVICE }}${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}
         max-size: 2G
-
+        
+    - name: Verify critical files
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        if [ ! -f include/uapi/asm-generic/Kbuild.asm ]; then
+          echo "❌ Missing Kbuild.asm! Restoring from Linux v5.15..."
+          mkdir -p include/uapi/asm-generic
+          curl -sL https://raw.githubusercontent.com/torvalds/linux/v5.15/include/uapi/asm-generic/Kbuild.asm \
+            -o include/uapi/asm-generic/Kbuild.asm
+        fi
+        ls -l include/uapi/asm-generic/Kbuild.asm
+        
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
