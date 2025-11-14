@@ -286,8 +286,6 @@ jobs:
         # 手动删除可能残留的目录
         rm -rf include/config/
         rm -rf arch/arm64/boot/
-        # 返回out目录继续操作
-        cd out
         echo "加载基础 defconfig 到 out/"
         make O/out ARCH=arm64 defconfig
         echo "合并配置片段"
