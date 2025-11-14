@@ -285,32 +285,34 @@ jobs:
         make mrproper
         # 手动删除可能残留的目录
         rm -rf include/config/
-        rm -rf arch/arm64/boot/
+        rm -rf arch/${{ env.ARCH }}/boot/
+        
         echo "加载基础 defconfig 到 out/"
-        make O/out ARCH=arm64 defconfig
+        make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_BASE_CONFIG }}
+        
         echo "合并配置片段"
         mkdir -p out
         # 确保在根目录执行merge_config.sh
-        cd $GITHUBWorkSpace/kernel Workspace/android-kernel
-        scripts/kconfig/merge_config.sh -m \
-            out/.config \
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        scripts/kconfig/merge_config.sh -m -O out \
+            arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }} \
             arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
             arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}
         
         # 返回out目录继续操作
         cd out
-
+    
         echo "🔍 验证配置"
-        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
-
+        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" .config || true
+    
         echo "🔧 步骤 3: olddefconfig（在 out/ 中）"
-        make O=out ARCH=${{ env.ARCH }} olddefconfig
-
+        make O=../out ARCH=${{ env.ARCH }} olddefconfig
+    
         echo "🚀 编译"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+            make -j$(nproc --all) CC="ccache clang" O=../out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         else
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+            make -j$(nproc --all) CC=clang O=../out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         fi
 
 
