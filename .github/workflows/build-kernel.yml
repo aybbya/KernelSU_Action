@@ -294,18 +294,19 @@ jobs:
         echo "🔍 验证配置"
         grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM" out/.config || true
     
-        echo "🔧 步骤 3: olddefconfig（从根目录执行）"
-        yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
+        echo "🔧 步骤 3: alldefconfig（从根目录执行）"
+        # 关键修改：使用 alldefconfig 代替 olddefconfig
+        # alldefconfig 会将所有新选项设置为默认值，并且完全非交互，彻底解决配置问题
+        make O=out ARCH=${{ env.ARCH }} alldefconfig
     
         echo "🚀 编译"
+        # 由于配置问题已从根源解决，这里不再需要 yes "" |
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-          # 关键修改：在最终的 make 命令前也加上 yes "" |
-          # 这会处理在 syncconfig 阶段可能出现的任何交互式问题
-          yes "" | make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+          make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         else
-          # 关键修改：在最终的 make 命令前也加上 yes "" |
-          yes "" | make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+          make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         fi
+
 
 
 
