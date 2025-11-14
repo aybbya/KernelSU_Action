@@ -266,17 +266,19 @@ jobs:
         echo "🔧 步骤 2: 合并设备特定配置片段 (${{ env.KERNEL_CONFIG }})"
         scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/${{ env.KERNEL_CONFIG }}
 
-        echo "🔧 步骤 3: 自动化最终配置 (处理新选项，无需交互)"
-        make O=out ARCH=${{ env.ARCH }} olddefconfig
+        echo "🔧 步骤 3: 强制自动化最终配置 (使用 yes 命令回答所有问题)"
+        # 使用 yes "" | make oldconfig 来强制回答所有交互式问题
+        yes "" | make O=out ARCH=${{ env.ARCH }} oldconfig
 
         echo "🚀 步骤 4: 开始编译内核"
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
-            # 在命令末尾添加 </dev/null 来防止交互式输入等待
+            # 保留 </dev/null 作为双重保险
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} </dev/null
         else
-            # 在命令末尾添加 </dev/null 来防止交互式输入等待
+            # 保留 </dev/null 作为双重保险
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} </dev/null
         fi
+
 
 
 
