@@ -290,20 +290,20 @@ jobs:
             echo "❌ KERNEL_BASE_CONFIG not found: arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}"
             exit 1
         fi
-        if [ ! -f "${{ env.COMMON_CONFIG_FRAGMENT }}" ]; then
-            echo "❌ COMMON_CONFIG_FRAGMENT not found: ${{ env.COMMON_CONFIG_FRAGMENT }}"
+        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}" ]; then
+            echo "❌ COMMON_CONFIG_FRAGMENT not found: arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}"
             exit 1
         fi
-        if [ ! -f "${{ env.DEVICE_CONFIG_FRAGMENT }}" ]; then
-            echo "❌ DEVICE_CONFIG_FRAGMENT not found: ${{ env.DEVICE_CONFIG_FRAGMENT }}"
+        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}" ]; then
+            echo "❌ DEVICE_CONFIG_FRAGMENT not found: arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
             exit 1
         fi
 
         echo "🔧 合并三个配置：base + common + device"
         scripts/kconfig/merge_config.sh -m -O out \
             "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}" \
-            "${{ env.COMMON_CONFIG_FRAGMENT }}" \
-            "${{ env.DEVICE_CONFIG_FRAGMENT }}"
+            "arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}" \
+            "arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
 
         echo "🔧 应用额外配置（KernelSU / LTO / OverlayFS 等）"
         if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
