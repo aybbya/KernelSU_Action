@@ -277,41 +277,35 @@ jobs:
         export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH"
         export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH"
         export KBUILD_BUILD_HOST="Github-Action"
-        export KBUILD_BUILD_USER="$(echo ${{ github.actor }} | tr A-Z a-z)"
+        export KBUILD_BUILD_USER="$(echo aybbya | tr A-Z a-z)"
         
-        echo "清理构建产物（保留源码）"
+        echo "🧹 清理构建产物（保留源码）"
         make mrproper
         rm -rf include/config/
-        rm -rf arch/${{ env.ARCH }}/boot/
+        rm -rf arch/arm64/boot/
         mkdir -p out
 
-        # 🔍 验证配置文件是否存在（全部在 arch/${ARCH}/configs/ 下）
-        BASE_CONFIG_PATH="arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}"
-        COMMON_FRAGMENT_PATH="arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}"
-        DEVICE_FRAGMENT_PATH="arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
+        # 🔍 验证配置文件路径（全部位于 arch/arm64/configs/ 下）
+        BASE_CONFIG_PATH="arch/arm64/configs/defconfig"
+        COMMON_FRAGMENT_PATH="arch/arm64/configs/vendor/xiaomi/sm8250-common.config"
+        DEVICE_FRAGMENT_PATH="arch/arm64/configs/vendor/xiaomi/umi.config"
 
-        echo "🔍 验证配置文件是否存在"
-        if [ ! -f "$BASE_CONFIG_PATH" ]; then
-            echo "❌ KERNEL_BASE_CONFIG not found: $BASE_CONFIG_PATH"
-            exit 1
-        fi
-        if [ ! -f "$COMMON_FRAGMENT_PATH" ]; then
-            echo "❌ COMMON_CONFIG_FRAGMENT not found: $COMMON_FRAGMENT_PATH"
-            exit 1
-        fi
-        if [ ! -f "$DEVICE_FRAGMENT_PATH" ]; then
-            echo "❌ DEVICE_CONFIG_FRAGMENT not found: $DEVICE_FRAGMENT_PATH"
-            exit 1
-        fi
+        echo "🔍 检查配置文件是否存在"
+        for f in "$BASE_CONFIG_PATH" "$COMMON_FRAGMENT_PATH" "$DEVICE_FRAGMENT_PATH"; do
+            if [ ! -f "$f" ]; then
+                echo "❌ 配置文件未找到: $f"
+                exit 1
+            fi
+        done
 
-        # 🔧 合并三个配置：base + common + device
-        echo "🔧 合并三个配置：base + common + device"
+        # 🔧 合并配置
+        echo "🔧 合并 base + common + device 配置"
         scripts/kconfig/merge_config.sh -m -O out \
             "$BASE_CONFIG_PATH" \
             "$COMMON_FRAGMENT_PATH" \
             "$DEVICE_FRAGMENT_PATH"
 
-        # 🔧 应用额外配置（KernelSU / LTO / OverlayFS 等）
+        # 🔧 应用额外内核选项（根据 env 动态启用）
         if [ "${{ env.APPLY_KSU_PATCH }}" = "true" ]; then
             echo "CONFIG_KSU=y" >> out/.config
         fi
@@ -334,34 +328,34 @@ jobs:
             echo "CONFIG_CC_WERROR=n" >> out/.config
         fi
 
+        # 🔒 关键：非交互式生成最终 .config（禁止任何 stdin 读取）
+        echo "🔐 生成非交互式最终配置（olddefconfig + syncconfig）"
+        make O=out ARCH=arm64 KCONFIG_ALLCONFIG=/dev/null olddefconfig </dev/null
+        make O=out ARCH=arm64 syncconfig </dev/null
+
         # 🔍 验证关键配置
-        echo "🔍 验证关键配置"
         if ! grep -q "^CONFIG_ARCH_QCOM=y" out/.config; then
-            echo "❌ CONFIG_ARCH_QCOM is not set!"
+            echo "❌ CONFIG_ARCH_QCOM 未启用！"
             exit 1
         fi
 
-        # 🔧 执行 olddefconfig（使用 /dev/null 避免 stdin 污染）
-        echo "🔧 执行 olddefconfig 以解决依赖和新选项"
-        make O=out ARCH=${{ env.ARCH }} olddefconfig < /dev/null
-
-        # 🚀 构建参数数组（安全传递）
+        # 🚀 构建参数
         MAKE_ARGS=(
             -j$(nproc --all)
             O=out
-            ARCH=${{ env.ARCH }}
+            ARCH=arm64
             LLVM=1
             LLVM_IAS=1
         )
 
-        # CCACHE 支持
+        # CCACHE
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
             MAKE_ARGS+=(CC="ccache clang")
         else
             MAKE_ARGS+=(CC=clang)
         fi
 
-        # 添加 CROSS_COMPILE（来自 GCC_64 / GCC_32）
+        # CROSS_COMPILE（来自 GCC_64 / GCC_32）
         if [ -n "${{ env.GCC_64 }}" ]; then
             MAKE_ARGS+=(${{ env.GCC_64 }})
         fi
@@ -369,13 +363,14 @@ jobs:
             MAKE_ARGS+=(${{ env.GCC_32 }})
         fi
 
-        # 安全解析 EXTRA_CMDS（如 LD=ld.lld）
+        # EXTRA_CMDS（如 LD=ld.lld）
         if [ -n "${{ env.EXTRA_CMDS }}" ]; then
             eval "extra_tokens=( ${{ env.EXTRA_CMDS }} )"
             MAKE_ARGS+=( "${extra_tokens[@]}" )
         fi
 
-        echo "🚀 Running: make ${MAKE_ARGS[*]}"
+        echo "🚀 执行编译命令:"
+        echo "make ${MAKE_ARGS[*]}"
         make "${MAKE_ARGS[@]}"
 
 
