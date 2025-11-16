@@ -189,15 +189,18 @@ jobs:
           echo "LOCALVERSION=" >> $GITHUB_ENV
         fi
 
-# 👇 新增以下步骤 👇
     - name: Fix missing ce_api.h by replacing qcacld-3.0 with LineageOS version
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        echo "Backing up current qcacld-3.0..."
+        echo ">>> Current working directory: $(pwd)"
+        
+        # Backup
         mv drivers/staging/qcacld-3.0 drivers/staging/qcacld-3.0.broken || true
     
-        echo "Fetching complete qcacld-3.0 from LineageOS/sm8250..."
+        # Clone from a known-good branch (lineage-20.0 for Android 13)
+        echo "Fetching qcacld-3.0 from LineageOS (lineage-20.0)..."
         git clone --filter=blob:none --sparse --depth=1 \
+            -b lineage-20.0 \
             https://github.com/LineageOS/android_kernel_xiaomi_sm8250.git \
             lineage-sm8250-temp
     
@@ -206,9 +209,19 @@ jobs:
         git checkout
         cp -r drivers/staging/qcacld-3.0 ../drivers/staging/
         cd ..
-        rm -rf lineage-sm8250-temp
     
-        echo "✅ qcacld-3.0 replaced with complete version from LineageOS."
+        # Verification
+        if [ ! -f drivers/staging/qcacld-3.0/core/ce/inc/ce_api.h ]; then
+          echo "❌ FATAL: ce_api.h is still missing after replacement!"
+          exit 1
+        fi
+    
+        if ! grep -q "ce/inc" drivers/staging/qcacld-3.0/core/hdd/Makefile; then
+          echo "⚠️ Warning: ce include path not found in hdd Makefile"
+        fi
+    
+        rm -rf lineage-sm8250-temp
+        echo "✅ qcacld-3.0 successfully replaced from LineageOS/lineage-20.0"
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
