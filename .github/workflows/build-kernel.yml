@@ -269,8 +269,6 @@ jobs:
 
 
 
-
-        
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
@@ -278,41 +276,70 @@ jobs:
         export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        
+
         echo "清理构建产物（保留源码）"
         make mrproper
         rm -rf include/config/
         rm -rf arch/${{ env.ARCH }}/boot/
-        
-        echo "一次性生成并合并所有配置到 out/"
+
+        echo "✅ 创建输出目录"
         mkdir -p out
+
+        echo "🔍 验证配置文件是否存在"
+        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}" ]; then
+            echo "❌ KERNEL_BASE_CONFIG not found: arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}"
+            exit 1
+        fi
+        if [ ! -f "${{ env.COMMON_CONFIG_FRAGMENT }}" ]; then
+            echo "❌ COMMON_CONFIG_FRAGMENT not found: ${{ env.COMMON_CONFIG_FRAGMENT }}"
+            exit 1
+        fi
+        if [ ! -f "${{ env.DEVICE_CONFIG_FRAGMENT }}" ]; then
+            echo "❌ DEVICE_CONFIG_FRAGMENT not found: ${{ env.DEVICE_CONFIG_FRAGMENT }}"
+            exit 1
+        fi
+
+        echo "🔧 合并三个配置：base + common + device"
         scripts/kconfig/merge_config.sh -m -O out \
-            arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }} \
-            arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }} \
-            arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}
-        
-        # 关键修改 1: 强制禁用LTO
-        echo "🔧 强制禁用LTO以解决编译问题"
-        sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' out/.config || true
-        sed -i 's/CONFIG_LTO_NONE=y/CONFIG_LTO_NONE=n/' out/.config || true
-        echo "CONFIG_LTO_NONE=y" >> out/.config
-        echo "CONFIG_LTO_CLANG=n" >> out/.config
-    
-        echo "🔍 验证配置"
-        grep -E "CONFIG_QCOM_SMEM|CONFIG_ARCH_QCOM|CONFIG_LTO" out/.config || true
-    
-        echo "🔧 步骤 3: olddefconfig（从根目录执行）"
-        # 关键修改 2: 使用 olddefconfig 代替 alldefconfig，并用 yes "" | 保证非交互
-        # olddefconfig 会修复和更新合并后的配置，使其与当前内核树兼容
+            "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}" \
+            "${{ env.COMMON_CONFIG_FRAGMENT }}" \
+            "${{ env.DEVICE_CONFIG_FRAGMENT }}"
+
+        echo "🔧 应用额外配置（KernelSU / LTO / OverlayFS 等）"
+        if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
+            echo "CONFIG_KSU=y" >> out/.config
+        fi
+        if [ ${{ env.ADD_KPROBES_CONFIG }} = true ] && [ ${{ env.APPLY_KSU_PATCH }} != true ]; then
+            echo "CONFIG_MODULES=y" >> out/.config
+            echo "CONFIG_KPROBES=y" >> out/.config
+            echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+            echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
+        fi
+        if [ ${{ env.ADD_OVERLAYFS_CONFIG }} = true ]; then
+            echo "CONFIG_OVERLAY_FS=y" >> out/.config
+        fi
+        if [ ${{ env.DISABLE_LTO }} = true ]; then
+            sed -i 's/CONFIG_LTO_CLANG=y/# CONFIG_LTO_CLANG is not set/' out/.config || true
+            sed -i 's/CONFIG_LTO=y/# CONFIG_LTO is not set/' out/.config || true
+            sed -i 's/CONFIG_THINLTO=y/# CONFIG_THINLTO is not set/' out/.config || true
+            echo "CONFIG_LTO_NONE=y" >> out/.config
+        fi
+        if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
+            echo "CONFIG_CC_WERROR=n" >> out/.config
+        fi
+
+        echo "🔍 验证关键配置"
+        grep -E "CONFIG_ARCH_QCOM|CONFIG_SOC_SM8250|CONFIG_KSU|CONFIG_LTO" out/.config || true
+
+        echo "🔧 执行 olddefconfig 以解决依赖和新选项"
         yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
-    
-        echo "🚀 编译"
+
+        echo "🚀 开始编译内核"
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
           make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         else
           make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
         fi
-
 
 
 
