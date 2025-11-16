@@ -334,12 +334,29 @@ jobs:
         echo "🔧 执行 olddefconfig 以解决依赖和新选项"
         yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
 
-        echo "🚀 开始编译内核"
+        # 构建 make 参数数组
+        MAKE_ARGS=(-j$(nproc --all) O=out ARCH=${{ env.ARCH }})
+
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
-          make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+            MAKE_ARGS+=(CC="ccache clang")
         else
-          make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.EXTRA_CMDS }}
+            MAKE_ARGS+=(CC=clang)
         fi
+
+        if [ -n "${{ env.GCC_64 }}" ]; then
+            MAKE_ARGS+=(${{ env.GCC_64 }})
+        fi
+        if [ -n "${{ env.GCC_32 }}" ]; then
+            MAKE_ARGS+=(${{ env.GCC_32 }})
+        fi
+
+        if [ -n "${{ env.EXTRA_CMDS }}" ]; then
+            eval "EXTRA=( ${{ env.EXTRA_CMDS }} )"
+            MAKE_ARGS+=( "${EXTRA[@]}" )
+        fi
+
+        echo "🚀 Running: make ${MAKE_ARGS[*]}"
+        make "${MAKE_ARGS[@]}"
 
 
 
