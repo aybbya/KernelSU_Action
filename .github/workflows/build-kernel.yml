@@ -271,78 +271,97 @@ jobs:
 
     - name: Build kernel
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$GITHUB_WORKSPACE/kernel_workspace/gas:$PATH
-        export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH
-        export KBUILD_BUILD_HOST=Github-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-
+        cd "$GITHUB_WORKSPACE/kernel_workspace/android-kernel"
+        
+        # 设置环境变量
+        export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH"
+        export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/lib64:$LD_LIBRARY_PATH"
+        export KBUILD_BUILD_HOST="Github-Action"
+        export KBUILD_BUILD_USER="$(echo ${{ github.actor }} | tr A-Z a-z)"
+        
         echo "清理构建产物（保留源码）"
         make mrproper
         rm -rf include/config/
         rm -rf arch/${{ env.ARCH }}/boot/
-
-        echo "✅ 创建输出目录"
         mkdir -p out
 
+        # 🔍 验证配置文件是否存在（全部在 arch/${ARCH}/configs/ 下）
+        BASE_CONFIG_PATH="arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}"
+        COMMON_FRAGMENT_PATH="arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}"
+        DEVICE_FRAGMENT_PATH="arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
+
         echo "🔍 验证配置文件是否存在"
-        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}" ]; then
-            echo "❌ KERNEL_BASE_CONFIG not found: arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}"
+        if [ ! -f "$BASE_CONFIG_PATH" ]; then
+            echo "❌ KERNEL_BASE_CONFIG not found: $BASE_CONFIG_PATH"
             exit 1
         fi
-        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}" ]; then
-            echo "❌ COMMON_CONFIG_FRAGMENT not found: arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}"
+        if [ ! -f "$COMMON_FRAGMENT_PATH" ]; then
+            echo "❌ COMMON_CONFIG_FRAGMENT not found: $COMMON_FRAGMENT_PATH"
             exit 1
         fi
-        if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}" ]; then
-            echo "❌ DEVICE_CONFIG_FRAGMENT not found: arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
+        if [ ! -f "$DEVICE_FRAGMENT_PATH" ]; then
+            echo "❌ DEVICE_CONFIG_FRAGMENT not found: $DEVICE_FRAGMENT_PATH"
             exit 1
         fi
 
+        # 🔧 合并三个配置：base + common + device
         echo "🔧 合并三个配置：base + common + device"
         scripts/kconfig/merge_config.sh -m -O out \
-            "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_BASE_CONFIG }}" \
-            "arch/${{ env.ARCH }}/configs/${{ env.COMMON_CONFIG_FRAGMENT }}" \
-            "arch/${{ env.ARCH }}/configs/${{ env.DEVICE_CONFIG_FRAGMENT }}"
+            "$BASE_CONFIG_PATH" \
+            "$COMMON_FRAGMENT_PATH" \
+            "$DEVICE_FRAGMENT_PATH"
 
-        echo "🔧 应用额外配置（KernelSU / LTO / OverlayFS 等）"
-        if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
+        # 🔧 应用额外配置（KernelSU / LTO / OverlayFS 等）
+        if [ "${{ env.APPLY_KSU_PATCH }}" = "true" ]; then
             echo "CONFIG_KSU=y" >> out/.config
         fi
-        if [ ${{ env.ADD_KPROBES_CONFIG }} = true ] && [ ${{ env.APPLY_KSU_PATCH }} != true ]; then
+        if [ "${{ env.ADD_KPROBES_CONFIG }}" = "true" ] && [ "${{ env.APPLY_KSU_PATCH }}" != "true" ]; then
             echo "CONFIG_MODULES=y" >> out/.config
             echo "CONFIG_KPROBES=y" >> out/.config
             echo "CONFIG_HAVE_KPROBES=y" >> out/.config
             echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
         fi
-        if [ ${{ env.ADD_OVERLAYFS_CONFIG }} = true ]; then
+        if [ "${{ env.ADD_OVERLAYFS_CONFIG }}" = "true" ]; then
             echo "CONFIG_OVERLAY_FS=y" >> out/.config
         fi
-        if [ ${{ env.DISABLE_LTO }} = true ]; then
-            sed -i 's/CONFIG_LTO_CLANG=y/# CONFIG_LTO_CLANG is not set/' out/.config || true
-            sed -i 's/CONFIG_LTO=y/# CONFIG_LTO is not set/' out/.config || true
-            sed -i 's/CONFIG_THINLTO=y/# CONFIG_THINLTO is not set/' out/.config || true
+        if [ "${{ env.DISABLE_LTO }}" = "true" ]; then
+            sed -i 's/^CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/' out/.config || true
+            sed -i 's/^CONFIG_LTO=.*/# CONFIG_LTO is not set/' out/.config || true
+            sed -i 's/^CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/' out/.config || true
             echo "CONFIG_LTO_NONE=y" >> out/.config
         fi
-        if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
+        if [ "${{ env.DISABLE_CC_WERROR }}" = "true" ]; then
             echo "CONFIG_CC_WERROR=n" >> out/.config
         fi
 
+        # 🔍 验证关键配置
         echo "🔍 验证关键配置"
-        grep -E "CONFIG_ARCH_QCOM|CONFIG_SOC_SM8250|CONFIG_KSU|CONFIG_LTO" out/.config || true
+        if ! grep -q "^CONFIG_ARCH_QCOM=y" out/.config; then
+            echo "❌ CONFIG_ARCH_QCOM is not set!"
+            exit 1
+        fi
 
+        # 🔧 执行 olddefconfig（使用 /dev/null 避免 stdin 污染）
         echo "🔧 执行 olddefconfig 以解决依赖和新选项"
-        yes "" | make O=out ARCH=${{ env.ARCH }} olddefconfig
+        make O=out ARCH=${{ env.ARCH }} olddefconfig < /dev/null
 
-        # 构建 make 参数数组
-        MAKE_ARGS=(-j$(nproc --all) O=out ARCH=${{ env.ARCH }})
+        # 🚀 构建参数数组（安全传递）
+        MAKE_ARGS=(
+            -j$(nproc --all)
+            O=out
+            ARCH=${{ env.ARCH }}
+            LLVM=1
+            LLVM_IAS=1
+        )
 
+        # CCACHE 支持
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
             MAKE_ARGS+=(CC="ccache clang")
         else
             MAKE_ARGS+=(CC=clang)
         fi
 
+        # 添加 CROSS_COMPILE（来自 GCC_64 / GCC_32）
         if [ -n "${{ env.GCC_64 }}" ]; then
             MAKE_ARGS+=(${{ env.GCC_64 }})
         fi
@@ -350,14 +369,14 @@ jobs:
             MAKE_ARGS+=(${{ env.GCC_32 }})
         fi
 
+        # 安全解析 EXTRA_CMDS（如 LD=ld.lld）
         if [ -n "${{ env.EXTRA_CMDS }}" ]; then
-            eval "EXTRA=( ${{ env.EXTRA_CMDS }} )"
-            MAKE_ARGS+=( "${EXTRA[@]}" )
+            eval "extra_tokens=( ${{ env.EXTRA_CMDS }} )"
+            MAKE_ARGS+=( "${extra_tokens[@]}" )
         fi
 
         echo "🚀 Running: make ${MAKE_ARGS[*]}"
         make "${MAKE_ARGS[@]}"
-
 
 
 
