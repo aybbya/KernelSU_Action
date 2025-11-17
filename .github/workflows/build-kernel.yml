@@ -228,7 +228,7 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         # 下载并运行 setup.sh
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
-        cp ../sukisu_compat.patch .
+        cp ../patches/sukisu_compat.patch .
         echo "Applying KernelSU compatibility patch..."
         git apply "sukisu_compat.patch"
         echo "Patch applied successfully."
