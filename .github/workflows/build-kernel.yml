@@ -326,19 +326,34 @@ jobs:
 
     - name: Check a kernel output files
       run: |
-       cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
-           echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
-       else
-           echo "Kernel output file is empty"
-       fi
-       if [ ${{ env.NEED_DTBO }} = true ]; then
-           if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
-               echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
-           else
-               echo "DTBO image is empty"
-           fi
-       fi
+        cd $GITHUB_WORKSPACE/kernel_workspace
+    
+        echo "=== Listing all files in android-kernel/out/ (recursive) ==="
+        find android-kernel/out -type f | sort
+    
+        echo "=== Checking kernel image ==="
+        KERNEL_IMAGE="android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}"
+        if [ -f "$KERNEL_IMAGE" ]; then
+            echo "Kernel image found: $KERNEL_IMAGE"
+            echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+        else
+            echo "❌ Kernel output file NOT found: $KERNEL_IMAGE"
+            ls -l android-kernel/out/arch/${{ env.ARCH }}/boot/ 2>/dev/null || echo "(boot directory may not exist)"
+        fi
+    
+        echo "=== Checking DTBO (if needed) ==="
+        if [ "${{ env.NEED_DTBO }}" = "true" ]; then
+            DTBO_IMAGE="android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img"
+            if [ -f "$DTBO_IMAGE" ]; then
+                echo "DTBO image found: $DTBO_IMAGE"
+                echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
+            else
+                echo "❌ DTBO image NOT found: $DTBO_IMAGE"
+                ls -l android-kernel/out/arch/${{ env.ARCH }}/boot/ 2>/dev/null || echo "(boot directory may not exist)"
+            fi
+        else
+            echo "DTBO not required (NEED_DTBO=false)"
+        fi
 
     - name: Make Anykernel3
       if: env.CHECK_FILE_IS_OK == 'true' && env.USE_CUSTOM_ANYKERNEL3 != 'true'
