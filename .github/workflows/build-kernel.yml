@@ -231,6 +231,35 @@ jobs:
         KSU_VERSION=$(cd KernelSU && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
         echo "UPLOADNAME=-KernelSU_$KSU_VERSION" >> $GITHUB_ENV
 
+        
+    - name: Setup KVM
+      if: env.ENABLE_KVM == 'true'
+      run: |
+         cd $GITHUB_WORKSPACE/kernel_workspace
+         echo "CONFIG_VIRTUALIZATION=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+         echo "CONFIG_KVM=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+         echo "CONFIG_VHOST_NET=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+         echo "CONFIG_VHOST_CROSS_ENDIAN_LEGACY=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}    
+     
+        
+    - name: Setup LXC
+      if: env.ENABLE_LXC == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        rm -rf utils
+        git clone https://github.com/tomxi1997/lxc-docker-support-for-android.git utils
+        echo 'source "utils/Kconfig"' >> "Kconfig"
+        echo "CONFIG_DOCKER=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        sed -i '/CONFIG_ANDROID_PARANOID_NETWORK/d' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        echo "# CONFIG_ANDROID_PARANOID_NETWORK is not set" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}1
+        #sed -i '/CONFIG_LOCALVERSION/d' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        #echo 'CONFIG_LOCALVERSION="-LXC-KernelSU-support_Pdx"' >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+           chmod +x $GITHUB_WORKSPACE/kernel_workspace/android-kernel/utils/runcpatch.sh
+        sh $GITHUB_WORKSPACE/kernel_workspace/android-kernel/utils/runcpatch.sh $GITHUB_WORKSPACE/kernel_workspace/android-kernel/kernel/cgroup/cgroup.c
+           if [ -f $GITHUB_WORKSPACE/kernel_workspace/android-kernel/net/netfilter/xt_qtaguid.c ]; then
+        patch -p0 < $GITHUB_WORKSPACE/kernel_workspace/android-kernel/utils/xt_qtaguid.patch
+        fi        
+
     - name: Setup Configuration for Kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
@@ -293,14 +322,12 @@ jobs:
            echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
        else
            echo "Kernel output file is empty"
-           exit 1
        fi
        if [ ${{ env.NEED_DTBO }} = true ]; then
            if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
                echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
            else
                echo "DTBO image is empty"
-               exit 1
            fi
        fi
 
