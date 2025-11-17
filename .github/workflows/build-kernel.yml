@@ -39,8 +39,7 @@ jobs:
             CUSTOM_GCC_32_SOURCE
             CUSTOM_GCC_32_BRANCH
             CUSTOM_GCC_32_BIN
-            ENABLE_KERNELSU
-            KERNELSU_TAG
+            ENABLE_SUKISU
             ADD_KPROBES_CONFIG
             DISABLE-LTO
             ADD_OVERLAYFS_CONFIG
@@ -223,22 +222,13 @@ jobs:
             echo "HAVE_SOURCE_BOOT_IMAGE=true" >> $GITHUB_ENV
         fi
 
-    - name: Setup KernelSU
-      if: env.ENABLE_KERNELSU == 'true'
+    - name: Setup SUKISU
+      if: env.ENABLE_SUKISU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         # 下载并运行 setup.sh
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
     
-        # === 新增：针对 Android 4.19 内核，注释掉不兼容的 MODULE_IMPORT_NS 行 ===
-        if [ -f "KernelSU/kernel/ksu.c" ]; then
-          sed -i 's/^MODULE_IMPORT_NS.*/\/\/ &/' KernelSU/kernel/ksu.c
-          echo "[+] Patched ksu.c: commented out MODULE_IMPORT_NS for Android 4.19 compatibility."
-        fi
-    
-        # 获取 KSU 版本号
-        KSU_VERSION=$(cd KernelSU && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-        echo "UPLOADNAME=-KernelSU_$KSU_VERSION" >> $GITHUB_ENV
 
         
     - name: Setup KVM
@@ -299,6 +289,11 @@ jobs:
         if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
             echo "CONFIG_CC_WERROR=n" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         fi
+        if [ ${{ env.ENABLE_SUKISU }} = true ]; then
+            echo "CONFIG_KPM=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_KALLSYMS_ALL=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_KALLSYMS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        fi
 
     - name: Setup ccache
       if: env.ENABLE_CCACHE == 'true'
@@ -317,6 +312,7 @@ jobs:
           export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
           export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
         fi
+        cat arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
