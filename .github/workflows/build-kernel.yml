@@ -227,7 +227,16 @@ jobs:
       if: env.ENABLE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        # 下载并运行 setup.sh
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
+    
+        # === 新增：针对 Android 4.19 内核，注释掉不兼容的 MODULE_IMPORT_NS 行 ===
+        if [ -f "KernelSU/kernel/ksu.c" ]; then
+          sed -i 's/^MODULE_IMPORT_NS.*/\/\/ &/' KernelSU/kernel/ksu.c
+          echo "[+] Patched ksu.c: commented out MODULE_IMPORT_NS for Android 4.19 compatibility."
+        fi
+    
+        # 获取 KSU 版本号
         KSU_VERSION=$(cd KernelSU && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
         echo "UPLOADNAME=-KernelSU_$KSU_VERSION" >> $GITHUB_ENV
 
