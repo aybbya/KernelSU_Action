@@ -229,11 +229,13 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         # 下载并运行 setup.sh
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
+        ls
+        cd KernelSU
         cp $GITHUB_WORKSPACE/patches/sukisu_compat.patch .
         echo "Applying KernelSU compatibility patch..."
         git apply "sukisu_compat.patch"
         echo "Patch applied successfully."
-
+      
         
     - name: Setup KVM
       if: env.ENABLE_KVM == 'true'
