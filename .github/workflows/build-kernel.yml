@@ -56,6 +56,11 @@ jobs:
             KSU_EXPECTED_SIZE
             KSU_EXPECTED_HASH
             REMOVE_UNUSED_PACKAGES
+            ENABLE_LXC
+            USE_KPROBES
+            ADD_KPROBES_CONFIG
+            ADD_OVERLAYFS_CONFIG
+            ENABLE_KVM
         )
 
         for CONFIG in "${CONFIG_LIST[@]}"; do
