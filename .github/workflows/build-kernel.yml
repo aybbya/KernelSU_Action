@@ -98,6 +98,24 @@ jobs:
         mkdir clang-aosp
         wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.CLANG_BRANCH }}/clang-${{ env.CLANG_VERSION }}.tar.gz
         tar -C clang-aosp/ -zxvf clang-${{ env.CLANG_VERSION }}.tar.gz
+        CLANG_BIN=""
+        # AOSP 预编译包结构通常是：clang-aosp/bin/clang （但有时也可能嵌套）
+        if [ -f "clang-aosp/bin/clang" ]; then
+            CLANG_BIN="clang-aosp/bin/clang"
+        else
+            # 如果没有直接在根目录，尝试查找
+            CLANG_BIN=$(find clang-aosp -name clang -type f | head -n1)
+        fi
+    
+        if [ -n "$CLANG_BIN" ] && [ -x "$CLANG_BIN" ]; then
+            echo "✅ Detected Clang binary at: $CLANG_BIN"
+            echo "📦 Clang version info:"
+            "$CLANG_BIN" --version
+        else
+            echo "⚠️ Warning: Clang binary not found or not executable."
+            echo "   Please check the structure of clang-${{ env.CLANG_VERSION }}.tar.gz"
+            ls -R clang-aosp/
+        fi
 
     - name: Download Custom-Clang
       if: env.USE_CUSTOM_CLANG == 'true'
