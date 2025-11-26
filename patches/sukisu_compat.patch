@@ -1,215 +1,157 @@
-diff --git a/kernel/allowlist.c b/kernel/allowlist.c
-index 947048f2..c80bad7e 100644
---- a/kernel/allowlist.c
-+++ b/kernel/allowlist.c
-@@ -10,6 +10,11 @@
- #include <linux/slab.h>
- #include <linux/types.h>
- #include <linux/version.h>
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-+#include <linux/sched/task.h>
-+#else
-+#include <linux/sched.h>
-+#endif
- #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
- #include <linux/compiler_types.h>
- #endif
-@@ -18,6 +23,7 @@
- #include "klog.h" // IWYU pragma: keep
- #include "selinux/selinux.h"
- #include "allowlist.h"
-+#include "kernel_compat.h"
- #include "manager.h"
- 
- #define FILE_MAGIC 0x7f4b5355 // ' KSU', u32
-diff --git a/kernel/file_wrapper.c b/kernel/file_wrapper.c
-index 24ae979c..96f93d6e 100644
---- a/kernel/file_wrapper.c
-+++ b/kernel/file_wrapper.c
-@@ -249,7 +249,7 @@ static void ksu_wrapper_show_fdinfo(struct seq_file *m, struct file *f) {
- 	}
+--- ./fs/exec.c
++++ ./fs/exec.c
+@@ -1912,12 +1912,26 @@ int do_execve_file(struct file *file, void *__argv, void *__envp)
+ 	return __do_execve_file(AT_FDCWD, NULL, argv, envp, 0, file);
  }
  
--#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
- static ssize_t ksu_wrapper_copy_file_range(struct file *f1, loff_t off1, struct file *f2,
- 		loff_t off2, size_t sz, unsigned int flags) {
- 	// TODO: determine which file to use
-@@ -261,49 +261,53 @@ static ssize_t ksu_wrapper_copy_file_range(struct file *f1, loff_t off1, struct
- 	return -EINVAL;
- }
- 
--static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in,
--				struct file *file_out, loff_t pos_out,
--				loff_t len, unsigned int remap_flags) {
-+static ssize_t ksu_wrapper_dedupe_file_range(struct file *src_file, u64 loff,
-+				u64 len, struct file *dst_file, u64 dst_loff) {
- 	// TODO: determine which file to use
--	struct ksu_file_wrapper* data = file_in->private_data;
-+	struct ksu_file_wrapper* data = src_file->private_data;
- 	struct file* orig = data->orig;
--	if (orig->f_op->remap_file_range) {
--		return orig->f_op->remap_file_range(orig, pos_in, file_out, pos_out, len, remap_flags);
-+	if (orig->f_op->dedupe_file_range) {
-+		return orig->f_op->dedupe_file_range(orig, loff, len, dst_file, dst_loff);
- 	}
- 	return -EINVAL;
- }
--#else
-+
- static int ksu_wrapper_clone_file_range(struct file *file_in, loff_t pos_in,
- 				struct file *file_out, loff_t pos_out, u64 len) {
- 	// TODO: determine which file to use
--	struct ksu_file_proxy* data = file_in->private_data;
-+	struct ksu_file_wrapper* data = file_in->private_data;
- 	struct file* orig = data->orig;
- 	if (orig->f_op->clone_file_range) {
- 		return orig->f_op->clone_file_range(orig, pos_in, file_out, pos_out, len);
- 	}
- 	return -EINVAL;
- }
-+#endif
- 
--static ssize_t ksu_wrapper_dedupe_file_range(struct file *src_file, u64 loff,
--				u64 len, struct file *dst_file, u64 dst_loff) {
--	// TODO: determine which file to use
--	struct ksu_file_proxy* data = src_file->private_data;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-+static int ksu_wrapper_fadvise(struct file *fp, loff_t off1, loff_t off2, int flags) {
-+	struct ksu_file_wrapper* data = fp->private_data;
- 	struct file* orig = data->orig;
--	if (orig->f_op->dedupe_file_range) {
--		return orig->f_op->dedupe_file_range(orig, loff, len, dst_file, dst_loff);
-+	if (orig->f_op->fadvise) {
-+		return orig->f_op->fadvise(orig, off1, off2, flags);
- 	}
- 	return -EINVAL;
- }
- #endif
- 
--static int ksu_wrapper_fadvise(struct file *fp, loff_t off1, loff_t off2, int flags) {
--	struct ksu_file_wrapper* data = fp->private_data;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
-+static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in,
-+				struct file *file_out, loff_t pos_out,
-+				loff_t len, unsigned int remap_flags) {
-+	// TODO: determine which file to use
-+	struct ksu_file_wrapper* data = file_in->private_data;
- 	struct file* orig = data->orig;
--	if (orig->f_op->fadvise) {
--		return orig->f_op->fadvise(orig, off1, off2, flags);
-+	if (orig->f_op->remap_file_range) {
-+		return orig->f_op->remap_file_range(orig, pos_in, file_out, pos_out, len, remap_flags);
- 	}
- 	return -EINVAL;
- }
-+#endif
- 
- static int ksu_wrapper_release(struct inode *inode, struct file *filp) {
- 	ksu_delete_file_wrapper(filp->private_data);
-@@ -358,14 +362,17 @@ struct ksu_file_wrapper* ksu_create_file_wrapper(struct file* fp) {
- 	p->ops.setlease = fp->f_op->setlease ? ksu_wrapper_setlease : NULL;
- 	p->ops.fallocate = fp->f_op->fallocate ? ksu_wrapper_fallocate : NULL;
- 	p->ops.show_fdinfo = fp->f_op->show_fdinfo ? ksu_wrapper_show_fdinfo : NULL;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
- 	p->ops.copy_file_range = fp->f_op->copy_file_range ? ksu_wrapper_copy_file_range : NULL;
--#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
--	p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;
--	p->ops.fadvise = fp->f_op->fadvise ? ksu_wrapper_fadvise : NULL;
--#else
- 	p->ops.clone_file_range = fp->f_op->clone_file_range ? ksu_wrapper_clone_file_range : NULL;
- 	p->ops.dedupe_file_range = fp->f_op->dedupe_file_range ? ksu_wrapper_dedupe_file_range : NULL;
- #endif
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-+	p->ops.fadvise = fp->f_op->fadvise ? ksu_wrapper_fadvise : NULL;
-+#endif
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
-+	p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;
-+#endif
- 
- #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
- 	p->ops.splice_eof = fp->f_op->splice_eof ? ksu_wrapper_splice_eof : NULL;
-diff --git a/kernel/kernel_compat.h b/kernel/kernel_compat.h
-index 3f5e48ff..55bb15a3 100644
---- a/kernel/kernel_compat.h
-+++ b/kernel/kernel_compat.h
-@@ -48,4 +48,14 @@ static long ksu_copy_from_user_retry(void *to,
- #define ksu_access_ok(addr, size)    access_ok(VERIFY_READ, addr, size)
- #endif
- 
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
-+#define TWA_RESUME true
++#ifdef CONFIG_KSU
++extern bool ksu_execveat_hook __read_mostly;
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
++			void *envp, int *flags);
++extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
++				 void *argv, void *envp, int *flags);
 +#endif
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-+#define ksu_force_sig(sig)      force_sig(sig);
-+#else
-+#define ksu_force_sig(sig)      force_sig(sig, current);
+ int do_execve(struct filename *filename,
+ 	const char __user *const __user *__argv,
+ 	const char __user *const __user *__envp)
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++#ifdef CONFIG_KSU
++	if (unlikely(ksu_execveat_hook))
++		ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++	else
++		ksu_handle_execveat_sucompat((int *)AT_FDCWD, &filename, NULL, NULL, NULL);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -1945,6 +1959,10 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#ifdef CONFIG_KSU
++	if (!ksu_execveat_hook)
++		ksu_handle_execveat_sucompat((int *)AT_FDCWD, &filename, NULL, NULL, NULL); /* 32-bit su */
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+--- ./fs/open.c
++++ ./fs/open.c
+@@ -450,8 +450,16 @@ out:
+ 	return res;
+ }
+ 
++#ifdef CONFIG_KSU
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
++			                    int *flags);
 +#endif
 +
- #endif
-diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
-index 57c2be1b..5de63e9e 100644
---- a/kernel/selinux/selinux.c
-+++ b/kernel/selinux/selinux.c
-@@ -116,7 +116,11 @@ bool is_task_ksu_domain(const struct cred* cred)
-     if (!cred) {
-         return false;
-     }
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,1,0)
-     const struct task_security_struct *tsec = selinux_cred(cred);
-+#else
-+    const struct task_security_struct *tsec = cred->security;
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++#ifdef CONFIG_KSU
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
 +#endif
-     if (!tsec) {
-         return false;
-     }
-@@ -140,7 +144,11 @@ bool is_zygote(const struct cred* cred)
-     if (!cred) {
-         return false;
-     }
--    const struct task_security_struct * tsec = selinux_cred(cred);
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,1,0)
-+    const struct task_security_struct *tsec = selinux_cred(cred);
-+#else
-+    const struct task_security_struct *tsec = cred->security;
-+#endif
-     if (!tsec) {
-         return false;
-     }
-diff --git a/kernel/supercalls.c b/kernel/supercalls.c
-index 897c7634..73dd09ae 100644
---- a/kernel/supercalls.c
-+++ b/kernel/supercalls.c
-@@ -382,10 +382,17 @@ static int do_get_wrapper_fd(void __user *arg) {
+ 	return do_faccessat(dfd, filename, mode);
+ }
  
- #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
- #define getfd_secure anon_inode_create_getfd
--#else
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
- #define getfd_secure anon_inode_getfd_secure
-+#else
-+// figure out better way later
-+#define getfd_secure anon_inode_getfd
- #endif
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
-     ret = getfd_secure("[ksu_fdwrapper]", &data->ops, data, f->f_flags, NULL);
-+#else
-+    ret = getfd_secure("[ksu_fdwrapper]", &data->ops, data, f->f_flags);
-+#endif
-     if (ret < 0) {
-         pr_err("ksu_fdwrapper: getfd failed: %d\n", ret);
-         goto put_wrapper_data;
-@@ -393,7 +400,12 @@ static int do_get_wrapper_fd(void __user *arg) {
-     struct file* pf = fget(ret);
+--- ./fs/read_write.c
++++ ./fs/read_write.c
+@@ -586,8 +586,18 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
+ 	return ret;
+ }
  
-     struct inode* wrapper_inode = file_inode(pf);
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0) || defined(KSU_OPTIONAL_SELINUX_INODE)
-     struct inode_security_struct *sec = selinux_inode(wrapper_inode);
-+#else
-+    struct inode_security_struct *sec =
-+        (struct inode_security_struct *)wrapper_inode->i_security;
++#ifdef CONFIG_KSU
++extern bool ksu_vfs_read_hook __read_mostly;
++extern int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr,
++			size_t *count_ptr);
 +#endif
-     if (sec) {
-         sec->sid = ksu_file_sid;
-     }
++
+ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ {
++#ifdef CONFIG_KSU
++	if (unlikely(ksu_vfs_read_hook))
++		ksu_handle_sys_read(fd, &buf, &count);
++#endif
+ 	return ksys_read(fd, buf, count);
+ }
+ 
+--- ./fs/stat.c
++++ ./fs/stat.c
+@@ -371,6 +371,10 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 	return cp_new_stat(&stat, statbuf);
+ }
+ 
++#ifdef CONFIG_KSU
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
++#endif
++
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 		struct stat __user *, statbuf, int, flag)
+@@ -378,6 +382,9 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -528,6 +535,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag); /* 32-bit su support */
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+--- ./drivers/input/input.c
++++ ./drivers/input/input.c
+@@ -444,11 +444,20 @@ static void input_handle_event(struct input_dev *dev,
+  * to 'seed' initial state of a switch or initial position of absolute
+  * axis, etc.
+  */
++#ifdef CONFIG_KSU
++extern bool ksu_input_hook __read_mostly;
++extern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);
++#endif
++
+ void input_event(struct input_dev *dev,
+ 		 unsigned int type, unsigned int code, int value)
+ {
+ 	unsigned long flags;
+ 
++#ifdef CONFIG_KSU
++	if (unlikely(ksu_input_hook))
++		ksu_handle_input_handle_event(&type, &code, &value);
++#endif
+ 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
+ 
+ 		spin_lock_irqsave(&dev->event_lock, flags);
+--- ./drivers/tty/pty.c
++++ ./drivers/tty/pty.c
+@@ -711,11 +711,18 @@ static struct tty_struct *ptm_unix98_lookup(struct tty_driver *driver,
+  *	This provides our locking for the tty pointer.
+  */
+ 
++#ifdef CONFIG_KSU
++extern int ksu_handle_devpts(struct inode*);
++#endif
++
+ static struct tty_struct *pts_unix98_lookup(struct tty_driver *driver,
+ 		struct file *file, int idx)
+ {
+ 	struct tty_struct *tty;
+ 
++#ifdef CONFIG_KSU
++	ksu_handle_devpts((struct inode *)file->f_path.dentry->d_inode);
++#endif
+ 	mutex_lock(&devpts_mutex);
+ 	tty = devpts_get_priv(file->f_path.dentry);
+ 	mutex_unlock(&devpts_mutex);
