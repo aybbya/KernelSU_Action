@@ -229,10 +229,7 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         # 下载并运行 setup.sh
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
-        echo "CONFIG_DOCKER=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
-        cp $GITHUB_WORKSPACE/patches/sukisu_compat.patch .
-        ls
-        patch -p1 < sukisu_compat.patch
+
         
         
     - name: Setup KVM
@@ -267,7 +264,8 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
-            bash $GITHUB_WORKSPACE/patches/patches.sh
+            cp $GITHUB_WORKSPACE/patches/sukisu_compat.patch .
+            patch -p1 < sukisu_compat.patch
             if grep -q "CONFIG_KSU" arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}; then
                 sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
                 sed -i 's/CONFIG_KSU=n/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
