@@ -229,29 +229,11 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         # 下载并运行 setup.sh
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
-        echo "🔍 --- Debugging Patch Application ---"
-        echo "Current working directory: $(pwd)"
-        echo "GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
-        echo "Listing files in GITHUB_WORKSPACE:"
-        ls -l $GITHUB_WORKSPACE | head -20 # 列出前20个文件/文件夹
-        echo "------------------------------------"
-        echo "🔧 Applying kernel compatibility patch..."
-        # 进入到内核源码目录
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "CONFIG_DOCKER=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        cp $GITHUB_WORKSPACE/patches/sukisu_compat.patch .
+        ls
+        patch -p1 < sukisu_compat.patch
         
-        # 再次确认路径，并应用补丁
-        PATCH_FILE="$GITHUB_WORKSPACE/patches/sukisu_compat.patch"
-        echo "Looking for patch file at: $PATCH_FILE"
-        
-        if [ -f "$PATCH_FILE" ]; then
-          echo "Patch file found. Applying..."
-          git apply "$PATCH_FILE"
-          echo "✅ Patch applied successfully."
-        else
-          echo "❌ ERROR: Patch file not found at $PATCH_FILE"
-          exit 1 # 退出并报错
-        fi
-
         
     - name: Setup KVM
       if: env.ENABLE_KVM == 'true'
