@@ -266,11 +266,43 @@ jobs:
         if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
             cp $GITHUB_WORKSPACE/patches/sukisu_compat.patch .
             patch -p1 < sukisu_compat.patch
-            if grep -q "CONFIG_KSU" arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}; then
-                sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
-                sed -i 's/CONFIG_KSU=n/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            # 启用 KernelSU 及相关调试/模块支持
+            config_file="arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}"
+            
+            # 确保 CONFIG_KSU=y
+            if grep -q "^CONFIG_KSU=" "$config_file"; then
+                sed -i 's/^CONFIG_KSU=.*/CONFIG_KSU=y/' "$config_file"
+            elif grep -q "^# CONFIG_KSU is not set" "$config_file"; then
+                sed -i 's/^# CONFIG_KSU is not set/CONFIG_KSU=y/' "$config_file"
             else
-                echo "CONFIG_KSU=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+                echo "CONFIG_KSU=y" >> "$config_file"
+            fi
+            
+            # 确保 CONFIG_KPM=y（KernelSU 的内核模块支持）
+            if grep -q "^CONFIG_KPM=" "$config_file"; then
+                sed -i 's/^CONFIG_KPM=.*/CONFIG_KPM=y/' "$config_file"
+            elif grep -q "^# CONFIG_KPM is not set" "$config_file"; then
+                sed -i 's/^# CONFIG_KPM is not set/CONFIG_KPM=y/' "$config_file"
+            else
+                echo "CONFIG_KPM=y" >> "$config_file"
+            fi
+            
+            # 确保 CONFIG_KALLSYMS=y
+            if grep -q "^CONFIG_KALLSYMS=" "$config_file"; then
+                sed -i 's/^CONFIG_KALLSYMS=.*/CONFIG_KALLSYMS=y/' "$config_file"
+            elif grep -q "^# CONFIG_KALLSYMS is not set" "$config_file"; then
+                sed -i 's/^# CONFIG_KALLSYMS is not set/CONFIG_KALLSYMS=y/' "$config_file"
+            else
+                echo "CONFIG_KALLSYMS=y" >> "$config_file"
+            fi
+            
+            # 确保 CONFIG_KALLSYMS_ALL=y（用于完整符号表，对 KSU 调试有帮助）
+            if grep -q "^CONFIG_KALLSYMS_ALL=" "$config_file"; then
+                sed -i 's/^CONFIG_KALLSYMS_ALL=.*/CONFIG_KALLSYMS_ALL=y/' "$config_file"
+            elif grep -q "^# CONFIG_KALLSYMS_ALL is not set" "$config_file"; then
+                sed -i 's/^# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/' "$config_file"
+            else
+                echo "CONFIG_KALLSYMS_ALL=y" >> "$config_file"
             fi
         fi
         if [ ${{ env.ADD_KPROBES_CONFIG }} = true -a ${{ env.APPLY_KSU_PATCH }} != true ]; then
